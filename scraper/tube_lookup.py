@@ -6,13 +6,16 @@ Pipeline per listing:
   2. Geocode postcode → lat/lon via postcodes.io (free, no key)
   3. Find nearest tube station within 1,200 m via TfL StopPoint API (anonymous, no key)
   4. Compute walk time: distance / 80 m/min  (brisk 4.8 km/h)
-  5. Look up static commute table: station → minutes to Royal Free Hospital (Hampstead NW3)
+  5. Query TfL Journey Planner API for door-to-door commute to Royal Free Hospital,
+     departing Monday 07:30 (rush-hour reference time)
 
 All network calls time out at 8 s and fail gracefully — a None result means the
 listing is kept but displayed without transport info.
 """
 
 import re
+from datetime import date, timedelta
+
 import httpx
 
 # ── Walk-speed constant ───────────────────────────────────────────────────────
@@ -20,55 +23,9 @@ WALK_SPEED_M_PER_MIN = 80          # ~4.8 km/h
 MAX_TUBE_RADIUS_M    = 1_200       # 15 min walk at 80 m/min
 TIMEOUT              = 8
 
-# ── Static commute to Royal Free Hospital (Hampstead NW3) ────────────────────
-# Times are door-to-door in minutes (tube ride + ~5 min walk from Hampstead stn).
-# Northern line Edgware branch is the direct route; other lines require a change.
-
-ROYAL_FREE_COMMUTE_MINUTES: dict[str, int] = {
-    # Northern line — Edgware branch (direct to Hampstead)
-    "Hampstead":                    5,
-    "Golders Green":                8,
-    "Brent Cross":                 12,
-    "Hendon Central":              16,
-    "Colindale":                   20,
-    "Burnt Oak":                   25,
-    "Edgware":                     30,
-    # Northern line — south of Hampstead (one or two stops back)
-    "Belsize Park":                 8,
-    "Chalk Farm":                  12,
-    "Camden Town":                 16,
-    "Kentish Town":                20,
-    "Tufnell Park":                23,
-    "Archway":                     26,
-    # Northern line — High Barnet branch (change at Camden Town → Edgware branch)
-    "Highgate":                    30,
-    "East Finchley":               33,
-    "Finchley Central":            36,
-    "West Finchley":               39,
-    "Woodside Park":               42,
-    "Totteridge & Whetstone":      45,
-    "High Barnet":                 48,
-    # Northern line — Mill Hill East spur
-    "Mill Hill East":              38,
-    # Piccadilly line (change at King's Cross → Northern → Hampstead)
-    "Bounds Green":                42,
-    "Wood Green":                  40,
-    "Turnpike Lane":               44,
-    "Manor House":                 47,
-    "Finsbury Park":               35,
-    "Arsenal":                     38,
-    "Holloway Road":               36,
-    "Caledonian Road":             33,
-    "King's Cross St. Pancras":    22,
-    # Victoria line (change at Warren Street → Northern → Hampstead)
-    "Warren Street":               20,
-    "Euston":                      18,
-    "Seven Sisters":               45,
-    "Tottenham Hale":              48,
-    # Overground / Elizabeth line extras
-    "Alexandra Palace":            38,
-    "New Southgate":               40,
-}
+# ── Royal Free Hospital (Pond Street, NW3 2QG) ───────────────────────────────
+ROYAL_FREE_LAT = 51.5534
+ROYAL_FREE_LON = -0.1630
 
 _FULL_POSTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b", re.IGNORECASE
@@ -78,6 +35,14 @@ _FULL_POSTCODE_RE = re.compile(
 _OUTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b(?!\s*\d)", re.IGNORECASE
 )
+
+
+def _next_monday() -> str:
+    """Return the date of the next Monday (or today if today is Monday) as YYYYMMDD."""
+    today = date.today()
+    days_ahead = (7 - today.weekday()) % 7  # Monday = 0
+    next_mon = today + timedelta(days=days_ahead if days_ahead else 7)
+    return next_mon.strftime("%Y%m%d")
 
 
 def extract_postcode(address: str) -> tuple[str, bool] | None:
@@ -153,16 +118,36 @@ def find_nearest_tube(lat: float, lon: float) -> tuple[str, int] | None:
         return None
 
 
-def commute_to_royal_free(station_name: str) -> int | None:
-    """Look up estimated commute time (minutes) from a tube station to Royal Free Hospital."""
-    # Exact match first
-    if station_name in ROYAL_FREE_COMMUTE_MINUTES:
-        return ROYAL_FREE_COMMUTE_MINUTES[station_name]
-    # Partial match (e.g. "Golders Green Underground Station" → "Golders Green")
-    for key, mins in ROYAL_FREE_COMMUTE_MINUTES.items():
-        if key.lower() in station_name.lower() or station_name.lower() in key.lower():
-            return mins
-    return None
+def journey_time_to_royal_free(from_lat: float, from_lon: float) -> int | None:
+    """
+    Query TfL Journey Planner for the fastest door-to-door journey from the given
+    coordinates to Royal Free Hospital, departing Monday at 07:30 (rush-hour reference).
+    Returns total journey time in minutes, or None on failure.
+    """
+    try:
+        from_str = f"{from_lat},{from_lon}"
+        to_str   = f"{ROYAL_FREE_LAT},{ROYAL_FREE_LON}"
+        r = httpx.get(
+            f"https://api.tfl.gov.uk/journey/journeyresults/{from_str}/to/{to_str}",
+            params={
+                "time":    "0730",
+                "timeIs":  "Departing",
+                "date":    _next_monday(),
+            },
+            timeout=TIMEOUT,
+        )
+        if r.status_code != 200:
+            return None
+
+        journeys = r.json().get("journeys", [])
+        if not journeys:
+            return None
+
+        # Pick the fastest option returned
+        return min(j["duration"] for j in journeys)
+
+    except Exception:
+        return None
 
 
 def enrich_with_tube_info(listing: dict) -> dict:
@@ -182,13 +167,16 @@ def enrich_with_tube_info(listing: dict) -> dict:
         return listing
 
     lat, lon = coords
-    result = find_nearest_tube(lat, lon)
-    if not result:
-        return listing
 
-    station, walk_min = result
-    listing["nearest_tube_station"] = station
-    listing["tube_walk_minutes"] = walk_min
-    listing["royal_free_commute_minutes"] = commute_to_royal_free(station)
+    tube_result = find_nearest_tube(lat, lon)
+    if tube_result:
+        station, walk_min = tube_result
+        listing["nearest_tube_station"] = station
+        listing["tube_walk_minutes"] = walk_min
+
+    # Journey Planner commute — uses property coordinates, not just the tube station
+    commute = journey_time_to_royal_free(lat, lon)
+    if commute is not None:
+        listing["royal_free_commute_minutes"] = commute
 
     return listing
