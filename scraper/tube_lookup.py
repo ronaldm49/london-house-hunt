@@ -70,22 +70,38 @@ ROYAL_FREE_COMMUTE_MINUTES: dict[str, int] = {
     "New Southgate":               40,
 }
 
-_POSTCODE_RE = re.compile(
+_FULL_POSTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b", re.IGNORECASE
+)
+# Outcode only — e.g. N22, NW9, SW1W.  Must be word-bounded so we don't
+# match random strings.  Checked after full postcode so the longer match wins.
+_OUTCODE_RE = re.compile(
+    r"\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b(?!\s*\d)", re.IGNORECASE
 )
 
 
-def extract_postcode(address: str) -> str | None:
-    """Pull the first UK postcode out of an address string."""
-    m = _POSTCODE_RE.search(address or "")
-    return m.group(1).upper().replace(" ", "") if m else None
+def extract_postcode(address: str) -> tuple[str, bool] | None:
+    """
+    Pull the best UK postcode out of an address string.
+    Returns (code, is_full_postcode) or None.
+    Tries full postcode first, falls back to outcode (e.g. N22, NW9).
+    """
+    addr = address or ""
+    m = _FULL_POSTCODE_RE.search(addr)
+    if m:
+        return m.group(1).upper().replace(" ", ""), True
+    m = _OUTCODE_RE.search(addr)
+    if m:
+        return m.group(1).upper(), False
+    return None
 
 
-def geocode_postcode(postcode: str) -> tuple[float, float] | None:
-    """Return (latitude, longitude) for a UK postcode via postcodes.io."""
+def geocode_postcode(postcode: str, is_full: bool = True) -> tuple[float, float] | None:
+    """Return (latitude, longitude) via postcodes.io for a full postcode or outcode."""
     try:
+        endpoint = "postcodes" if is_full else "outcodes"
         r = httpx.get(
-            f"https://api.postcodes.io/postcodes/{postcode}",
+            f"https://api.postcodes.io/{endpoint}/{postcode}",
             timeout=TIMEOUT,
         )
         if r.status_code == 200:
@@ -156,11 +172,12 @@ def enrich_with_tube_info(listing: dict) -> dict:
     Returns the listing dict (mutated in place).
     """
     address = listing.get("address", "")
-    postcode = extract_postcode(address)
-    if not postcode:
+    result = extract_postcode(address)
+    if not result:
         return listing
 
-    coords = geocode_postcode(postcode)
+    postcode, is_full = result
+    coords = geocode_postcode(postcode, is_full=is_full)
     if not coords:
         return listing
 
