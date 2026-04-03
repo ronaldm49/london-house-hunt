@@ -22,6 +22,7 @@ from supabase import create_client, Client
 
 import rightmove
 import onthemarket
+from tube_lookup import enrich_with_tube_info
 
 load_dotenv()
 
@@ -67,10 +68,17 @@ def detect_parking_status(description: str | None) -> str:
     return "bonus" if any(k in d for k in _PARKING_KEYWORDS) else "unverified"
 
 
-def enrich_listing(listing: dict) -> dict:
+def enrich_listing(listing: dict, max_tube_walk: int | None = None) -> dict:
+    """Enrich a listing with furnished/parking status and tube/commute info.
+    If max_tube_walk is set and the listing's tube walk exceeds it, returns None."""
     desc = listing.get("description") or ""
     listing["furnished_status"] = detect_furnished_status(desc)
     listing["parking_status"] = detect_parking_status(desc)
+    enrich_with_tube_info(listing)
+    if max_tube_walk is not None:
+        walk = listing.get("tube_walk_minutes")
+        if walk is not None and walk > max_tube_walk:
+            return None  # Filtered out — too far from tube
     return listing
 
 
@@ -258,6 +266,7 @@ def scrape_areas(
     max_bedrooms: int | None,
     furnished_only: bool,
     is_growth_mode: bool = False,
+    max_tube_walk: int | None = 15,
 ) -> list[dict]:
     """Scrape Rightmove + OnTheMarket for a list of areas and return enriched listings."""
     listings: list[dict] = []
@@ -283,8 +292,11 @@ def scrape_areas(
             for item in raw:
                 item["search_profile_id"] = profile_id
                 item["is_growth_mode"] = is_growth_mode
-                enrich_listing(item)
-            listings.extend(raw)
+                enriched = enrich_listing(item, max_tube_walk=max_tube_walk)
+                if enriched is not None:
+                    listings.append(enriched)
+                else:
+                    print(f"      ↳ Skipped (>{max_tube_walk} min walk to tube): {item.get('address')}")
         except Exception as e:
             print(f"    Rightmove failed for {area_name}: {e}")
 
@@ -301,8 +313,11 @@ def scrape_areas(
             for item in raw:
                 item["search_profile_id"] = profile_id
                 item["is_growth_mode"] = is_growth_mode
-                enrich_listing(item)
-            listings.extend(raw)
+                enriched = enrich_listing(item, max_tube_walk=max_tube_walk)
+                if enriched is not None:
+                    listings.append(enriched)
+                else:
+                    print(f"      ↳ Skipped (>{max_tube_walk} min walk to tube): {item.get('address')}")
         except Exception as e:
             print(f"    OnTheMarket failed for {area_name}: {e}")
 
@@ -347,6 +362,7 @@ if __name__ == "__main__":
         furnished_only = bool(profile.get("furnished_only", False))
         growth_mode_areas = profile.get("growth_mode_areas") or []
         growth_mode_threshold = profile.get("growth_mode_threshold") or 3
+        max_tube_walk = profile.get("max_tube_walk_minutes") or 15
 
         if not areas:
             print(f"  Profile '{profile_name}' has no areas — skipping.")
@@ -366,6 +382,7 @@ if __name__ == "__main__":
             max_bedrooms=max_bedrooms,
             furnished_only=furnished_only,
             is_growth_mode=False,
+            max_tube_walk=max_tube_walk,
         )
 
         print(f"\n  Upserting {len(primary_listings)} primary listings...")
@@ -387,6 +404,7 @@ if __name__ == "__main__":
                 max_bedrooms=max_bedrooms,
                 furnished_only=furnished_only,
                 is_growth_mode=True,
+                max_tube_walk=max_tube_walk,
             )
             print(f"  Upserting {len(growth_listings)} growth-mode listings...")
             new_growth = upsert_properties(supabase_client, growth_listings)

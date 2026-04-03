@@ -39,6 +39,9 @@ export interface Property {
   category: PropertyCategory | null;
   notes: string | null;
   search_profile_id: string | null;
+  nearest_tube_station: string | null;
+  tube_walk_minutes: number | null;
+  royal_free_commute_minutes: number | null;
 }
 
 export interface PropertyFilters {
