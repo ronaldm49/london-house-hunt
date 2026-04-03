@@ -123,6 +123,9 @@ def scrape(
     location_code: str = "REGION^93965",
     min_price: int = 2000,
     max_price: int = 2700,
+    min_bedrooms: int | None = None,
+    max_bedrooms: int | None = None,
+    furnished_only: bool = False,
 ) -> list[dict]:
     search_params = {
         **_BASE_SEARCH_PARAMS,
@@ -130,6 +133,13 @@ def scrape(
         "minPrice": str(min_price),
         "maxPrice": str(max_price),
     }
+    if min_bedrooms is not None:
+        search_params["minBedrooms"] = str(min_bedrooms)
+    if max_bedrooms is not None:
+        search_params["maxBedrooms"] = str(max_bedrooms)
+    if furnished_only:
+        # Rightmove accepts multiple furnishTypes values; request both furnished states
+        search_params["furnishTypes"] = "furnished,partFurnished"
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []
