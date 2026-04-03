@@ -13,6 +13,8 @@ All network calls time out at 8 s and fail gracefully — a None result means th
 listing is kept but displayed without transport info.
 """
 
+from __future__ import annotations
+
 import re
 from datetime import date, timedelta
 
@@ -21,7 +23,7 @@ import httpx
 # ── Walk-speed constant ───────────────────────────────────────────────────────
 WALK_SPEED_M_PER_MIN = 80          # ~4.8 km/h
 MAX_TUBE_RADIUS_M    = 1_200       # 15 min walk at 80 m/min
-TIMEOUT              = 8
+TIMEOUT              = 10
 
 # ── Royal Free Hospital (Pond Street, NW3 2QG) ───────────────────────────────
 ROYAL_FREE_LAT = 51.5534
@@ -30,26 +32,23 @@ ROYAL_FREE_LON = -0.1630
 _FULL_POSTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b", re.IGNORECASE
 )
-# Outcode only — e.g. N22, NW9, SW1W.  Must be word-bounded so we don't
-# match random strings.  Checked after full postcode so the longer match wins.
 _OUTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b(?!\s*\d)", re.IGNORECASE
 )
 
 
 def _next_monday() -> str:
-    """Return the date of the next Monday (or today if today is Monday) as YYYYMMDD."""
+    """Return the date of the next Monday as YYYYMMDD."""
     today = date.today()
-    days_ahead = (7 - today.weekday()) % 7  # Monday = 0
+    days_ahead = (7 - today.weekday()) % 7
     next_mon = today + timedelta(days=days_ahead if days_ahead else 7)
     return next_mon.strftime("%Y%m%d")
 
 
-def extract_postcode(address: str) -> tuple[str, bool] | None:
+def extract_postcode(address: str):
     """
     Pull the best UK postcode out of an address string.
     Returns (code, is_full_postcode) or None.
-    Tries full postcode first, falls back to outcode (e.g. N22, NW9).
     """
     addr = address or ""
     m = _FULL_POSTCODE_RE.search(addr)
@@ -61,8 +60,8 @@ def extract_postcode(address: str) -> tuple[str, bool] | None:
     return None
 
 
-def geocode_postcode(postcode: str, is_full: bool = True) -> tuple[float, float] | None:
-    """Return (latitude, longitude) via postcodes.io for a full postcode or outcode."""
+def geocode_postcode(postcode: str, is_full: bool = True):
+    """Return (latitude, longitude) via postcodes.io or None."""
     try:
         endpoint = "postcodes" if is_full else "outcodes"
         r = httpx.get(
@@ -74,15 +73,17 @@ def geocode_postcode(postcode: str, is_full: bool = True) -> tuple[float, float]
             lat, lon = data.get("latitude"), data.get("longitude")
             if lat and lon:
                 return float(lat), float(lon)
-    except Exception:
-        pass
+        else:
+            print(f"      [tube] postcodes.io {r.status_code} for {postcode}")
+    except Exception as e:
+        print(f"      [tube] geocode error for {postcode}: {e}")
     return None
 
 
-def find_nearest_tube(lat: float, lon: float) -> tuple[str, int] | None:
+def find_nearest_tube(lat: float, lon: float):
     """
     Query TfL StopPoint API for the nearest Underground station within MAX_TUBE_RADIUS_M.
-    Returns (station_name, walk_minutes) or None if nothing found.
+    Returns (station_name, walk_minutes) or None.
     """
     try:
         r = httpx.get(
@@ -98,72 +99,71 @@ def find_nearest_tube(lat: float, lon: float) -> tuple[str, int] | None:
             timeout=TIMEOUT,
         )
         if r.status_code != 200:
+            print(f"      [tube] TfL StopPoint {r.status_code} for ({lat},{lon})")
             return None
 
         stops = r.json().get("stopPoints", [])
         if not stops:
+            print(f"      [tube] No tube station within {MAX_TUBE_RADIUS_M}m of ({lat},{lon})")
             return None
 
-        # TfL returns stops sorted by distance ascending
         nearest = stops[0]
         distance_m = nearest.get("distance", 0)
         name = nearest.get("commonName", "")
-        # Strip " Underground Station" suffix for display
         name = re.sub(r"\s*(Underground|Station)\s*$", "", name, flags=re.IGNORECASE).strip()
-
         walk_min = max(1, round(distance_m / WALK_SPEED_M_PER_MIN))
         return name, walk_min
 
-    except Exception:
+    except Exception as e:
+        print(f"      [tube] StopPoint error for ({lat},{lon}): {e}")
         return None
 
 
-def journey_time_to_royal_free(from_lat: float, from_lon: float) -> int | None:
+def journey_time_to_royal_free(from_lat: float, from_lon: float):
     """
-    Query TfL Journey Planner for the fastest door-to-door journey from the given
-    coordinates to Royal Free Hospital, departing Monday at 07:30 (rush-hour reference).
-    Returns total journey time in minutes, or None on failure.
+    Query TfL Journey Planner for door-to-door journey to Royal Free Hospital,
+    departing Monday 07:30. Returns minutes or None.
     """
     try:
         from_str = f"{from_lat},{from_lon}"
         to_str   = f"{ROYAL_FREE_LAT},{ROYAL_FREE_LON}"
+        monday   = _next_monday()
         r = httpx.get(
             f"https://api.tfl.gov.uk/journey/journeyresults/{from_str}/to/{to_str}",
-            params={
-                "time":    "0730",
-                "timeIs":  "Departing",
-                "date":    _next_monday(),
-            },
+            params={"time": "0730", "timeIs": "Departing", "date": monday},
             timeout=TIMEOUT,
         )
         if r.status_code != 200:
+            print(f"      [tube] TfL Journey Planner {r.status_code} for ({from_lat},{from_lon}): {r.text[:200]}")
             return None
 
         journeys = r.json().get("journeys", [])
         if not journeys:
+            print(f"      [tube] No journeys returned for ({from_lat},{from_lon})")
             return None
 
-        # Pick the fastest option returned
         return min(j["duration"] for j in journeys)
 
-    except Exception:
+    except Exception as e:
+        print(f"      [tube] Journey Planner error for ({from_lat},{from_lon}): {e}")
         return None
 
 
 def enrich_with_tube_info(listing: dict) -> dict:
     """
     Resolve nearest tube station + walk time + Royal Free commute for a listing.
-    Sets nearest_tube_station, tube_walk_minutes, royal_free_commute_minutes.
-    Returns the listing dict (mutated in place).
+    Mutates the listing dict in place and returns it.
     """
     address = listing.get("address", "")
     result = extract_postcode(address)
     if not result:
+        print(f"      [tube] No postcode found in: {address!r}")
         return listing
 
     postcode, is_full = result
     coords = geocode_postcode(postcode, is_full=is_full)
     if not coords:
+        print(f"      [tube] Could not geocode: {postcode}")
         return listing
 
     lat, lon = coords
@@ -173,10 +173,11 @@ def enrich_with_tube_info(listing: dict) -> dict:
         station, walk_min = tube_result
         listing["nearest_tube_station"] = station
         listing["tube_walk_minutes"] = walk_min
+        print(f"      [tube] {address!r} → {station} ({walk_min} min walk)")
 
-    # Journey Planner commute — uses property coordinates, not just the tube station
     commute = journey_time_to_royal_free(lat, lon)
     if commute is not None:
         listing["royal_free_commute_minutes"] = commute
+        print(f"      [tube] Royal Free commute: {commute} min")
 
     return listing
