@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #fafaf8;
+  --bg-secondary: #f3f1ee;
+  --bg-card: #ffffff;
+  --bg-card-hover: #fdfdfb;
+  --bg-input: #f3f1ee;
+
+  --accent: #c45a3c;
+  --accent-hover: #b04e32;
+  --accent-gold: #b8860b;
+  --accent-blue: #2563b0;
+  --accent-green: #16a34a;
+  --accent-red: #dc2626;
+  --accent-purple: #7c3aed;
+
+  --text-primary: #1a1715;
+  --text-secondary: #5a534e;
+  --text-muted: #9a928c;
+
+  --border: #e5e0da;
+  --border-hover: #cec8c0;
+
+  /* Warm tints for category button active states */
+  --btn-bin-bg: #fdf0ec;
+  --btn-bin-border: #f2c4b2;
+  --btn-wishlist-bg: #faf5e4;
+  --btn-wishlist-border: #e6d48a;
+  --btn-called-bg: #edf3fa;
+  --btn-called-border: #b8d0e8;
+  --btn-offered-bg: #f3effe;
+  --btn-offered-border: #c4b5fd;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+/* Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s ease-out both;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* Stagger delays */
+.stagger-1 { animation-delay: 0.04s; }
+.stagger-2 { animation-delay: 0.08s; }
+.stagger-3 { animation-delay: 0.12s; }
+.stagger-4 { animation-delay: 0.16s; }
+.stagger-5 { animation-delay: 0.20s; }
+.stagger-6 { animation-delay: 0.24s; }
+.stagger-7 { animation-delay: 0.28s; }
+.stagger-8 { animation-delay: 0.32s; }
+.stagger-9 { animation-delay: 0.36s; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }

@@ -1,0 +1,34 @@
+name: Scrape Properties
+
+on:
+  schedule:
+    # BST (UTC+1) — current season (March–October)
+    - cron: '0 6 * * *'   # 7am BST
+    - cron: '0 10 * * *'  # 11am BST
+    - cron: '0 14 * * *'  # 3pm BST
+    - cron: '0 18 * * *'  # 7pm BST
+    - cron: '0 22 * * *'  # 11pm BST
+  workflow_dispatch: {}    # manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r scraper/requirements.txt
+
+      - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+        working-directory: scraper
+        run: python scraper.py
