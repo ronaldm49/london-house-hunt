@@ -22,7 +22,7 @@ from supabase import create_client, Client
 
 import rightmove
 import onthemarket
-from tube_lookup import enrich_with_tube_info, extract_postcode, geocode_postcode, find_nearest_tube, journey_time_to_royal_free
+from tube_lookup import enrich_with_tube_info, extract_postcode, geocode_postcode, find_nearest_tube, journey_time_to_royal_free, ALLOWED_TUBE_STATIONS
 
 load_dotenv()
 
@@ -75,10 +75,18 @@ def enrich_listing(listing: dict, max_tube_walk: int | None = None) -> dict:
     listing["furnished_status"] = detect_furnished_status(desc)
     listing["parking_status"] = detect_parking_status(desc)
     enrich_with_tube_info(listing)
+    station = listing.get("nearest_tube_station")
     if max_tube_walk is not None:
         walk = listing.get("tube_walk_minutes")
         if walk is not None and walk > max_tube_walk:
-            return None  # Filtered out — too far from tube
+            print(f"      ↳ Skipped (>{max_tube_walk} min walk to tube): {listing.get('address')}")
+            return None
+    # Drop properties south of Golders Green / Turnpike Lane
+    if station is not None:
+        allowed = any(s.lower() in station.lower() or station.lower() in s.lower() for s in ALLOWED_TUBE_STATIONS)
+        if not allowed:
+            print(f"      ↳ Skipped (station outside area: {station}): {listing.get('address')}")
+            return None
     return listing
 
 

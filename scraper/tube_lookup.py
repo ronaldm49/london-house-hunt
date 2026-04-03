@@ -29,6 +29,22 @@ TIMEOUT              = 10
 ROYAL_FREE_LAT = 51.5534
 ROYAL_FREE_LON = -0.1630
 
+# ── Allowed tube stations (north of Golders Green / Turnpike Lane) ────────────
+# Properties whose nearest station is NOT in this set are filtered out.
+ALLOWED_TUBE_STATIONS: set[str] = {
+    # Northern line — Edgware branch (Golders Green and north)
+    "Golders Green", "Brent Cross", "Hendon Central", "Colindale",
+    "Burnt Oak", "Edgware",
+    # Northern line — High Barnet branch (Highgate and north)
+    "Highgate", "East Finchley", "Finchley Central", "West Finchley",
+    "Woodside Park", "Totteridge & Whetstone", "High Barnet", "Mill Hill East",
+    # Piccadilly line (Turnpike Lane and north)
+    "Turnpike Lane", "Wood Green", "Bounds Green", "Arnos Grove",
+    "Southgate", "Oakwood", "Cockfosters",
+    # Overground / other north London
+    "Alexandra Palace", "New Southgate",
+}
+
 _FULL_POSTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b", re.IGNORECASE
 )
