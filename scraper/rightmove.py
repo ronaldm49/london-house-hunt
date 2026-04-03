@@ -27,7 +27,7 @@ _BASE_SEARCH_PARAMS = {
     "channel": "RENT",
     "currencyCode": "GBP",
     "sortType": "6",
-    "maxDaysSinceAdded": "1",
+    "maxDaysSinceAdded": "3",
 }
 
 MAX_PAGES = 42
@@ -138,8 +138,8 @@ def scrape(
     if max_bedrooms is not None:
         search_params["maxBedrooms"] = str(max_bedrooms)
     if furnished_only:
-        # Rightmove accepts multiple furnishTypes values; request both furnished states
-        search_params["furnishTypes"] = "furnished,partFurnished"
+        # httpx serialises a list as repeated params: furnishTypes=furnished&furnishTypes=partFurnished
+        search_params["furnishTypes"] = ["furnished", "partFurnished"]
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []

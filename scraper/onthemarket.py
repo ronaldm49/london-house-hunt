@@ -56,11 +56,11 @@ def _fetch_page(client: httpx.Client, page: int, search_url: str, search_params:
         results = redux.get("results", {})
 
         results_list = results.get("list", [])
-        total_str = results.get("totalResults", "0")
-        if isinstance(total_str, str):
-            total = int(total_str.replace(",", ""))
+        total_raw = results.get("totalResults") or "0"
+        if isinstance(total_raw, str):
+            total = int(total_raw.replace(",", "")) if total_raw.strip() else 0
         else:
-            total = int(total_str)
+            total = int(total_raw) if total_raw is not None else 0
         break
 
     return results_list, total
