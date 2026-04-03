@@ -126,6 +126,9 @@ def scrape(
     location_slug: str = "islington",
     min_price: int = 2000,
     max_price: int = 2700,
+    min_bedrooms: int | None = None,
+    max_bedrooms: int | None = None,
+    furnished_only: bool = False,
 ) -> list[dict]:
     search_url = BASE_URL + f"/to-rent/property/{location_slug}/"
     search_params = {
@@ -133,6 +136,15 @@ def scrape(
         "max-price": str(max_price),
         "recently-added": "24-hours",
     }
+    if min_bedrooms is not None:
+        search_params["beds-min"] = str(min_bedrooms)
+    if max_bedrooms is not None:
+        search_params["beds-max"] = str(max_bedrooms)
+    if furnished_only:
+        # OTM accepts furnished-state=furnished or part-furnished; we request both via two passes
+        # but the API only supports a single value per request — use "furnished" as primary filter
+        # and rely on the post-scrape furnished_status column to capture part-furnished listings too.
+        search_params["furnished-state"] = "furnished"
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []

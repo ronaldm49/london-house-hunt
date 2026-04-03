@@ -1,12 +1,21 @@
 """
 London House Hunt — scraper orchestrator.
-Runs all source modules (Rightmove, etc.), upserts results into Supabase,
-and reports new listings.
+Runs all source modules (Rightmove, OnTheMarket), upserts results into Supabase,
+enriches listings with furnished/parking status, and sends notifications.
+
+Profile-level features supported:
+  - min_bedrooms / max_bedrooms   — passed directly to scraper sources
+  - furnished_only                — filters by furnished/part-furnished at source level;
+                                    all listings are also enriched with detected furnished_status
+  - growth_mode_areas             — adjacent areas scraped when primary-zone new count is low
+  - growth_mode_threshold         — triggers growth mode when new primary listings < this value
+  - notification_interval_hours   — 0 = notify immediately; N = digest at most once per N hours
 """
 
 import os
+import re
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -15,6 +24,54 @@ import rightmove
 import onthemarket
 
 load_dotenv()
+
+# ── Transit-time lookup (door-to-door, TfL public transport) ──────────────────
+# Destination: Royal Free Hospital, Pond Street, Hampstead NW3
+# Nearest tube: Hampstead (Northern line, Edgware branch)
+
+TRANSIT_TO_ROYAL_FREE: dict[str, str] = {
+    "Golders Green":   "~15 min  (Northern line direct → Hampstead)",
+    "Hendon Central":  "~22 min  (Northern line direct → Hampstead)",
+    "Finchley Central":"~25 min  (Northern line direct → Hampstead)",
+    "Colindale":       "~30 min  (Northern line direct → Hampstead)",
+    "Bounds Green":    "~40 min  (Piccadilly → King's Cross · Northern → Hampstead)",
+    "Wood Green":      "~45 min  (Piccadilly → King's Cross · Northern → Hampstead)",
+    "Alexandra Park":  "~45 min  (bus/W7 → Wood Green · Piccadilly → King's Cross · Northern → Hampstead)",
+    "Muswell Hill":    "~40 min  (bus to East Finchley · Northern line → Hampstead)",
+}
+
+_FURNISHED_KEYWORDS = ("furnished", "part furnished", "part-furnished")
+_UNFURNISHED_KEYWORDS = ("unfurnished", "un-furnished", "not furnished")
+_PARKING_KEYWORDS = ("parking", "garage", "car space", "car park", "off-street", "driveway", "allocated space")
+
+
+def detect_furnished_status(description: str | None) -> str:
+    """Return 'furnished', 'part-furnished', 'unfurnished', or 'unknown'."""
+    if not description:
+        return "unknown"
+    d = description.lower()
+    if "part furnished" in d or "part-furnished" in d:
+        return "part-furnished"
+    if any(k in d for k in _UNFURNISHED_KEYWORDS):
+        return "unfurnished"
+    if "furnished" in d:
+        return "furnished"
+    return "unknown"
+
+
+def detect_parking_status(description: str | None) -> str:
+    """Return 'bonus' if parking is mentioned, else 'unverified'."""
+    if not description:
+        return "unverified"
+    d = description.lower()
+    return "bonus" if any(k in d for k in _PARKING_KEYWORDS) else "unverified"
+
+
+def enrich_listing(listing: dict) -> dict:
+    desc = listing.get("description") or ""
+    listing["furnished_status"] = detect_furnished_status(desc)
+    listing["parking_status"] = detect_parking_status(desc)
+    return listing
 
 
 def build_supabase_client() -> Client:
@@ -53,7 +110,50 @@ def upsert_properties(supabase: Client, properties: list[dict]) -> list[dict]:
     return new
 
 
-def send_email_notification(new_listings: list[dict], profiles: list[dict] | None = None) -> None:
+def should_send_notification(profile: dict) -> bool:
+    """Return True if this profile is due for a notification."""
+    interval = profile.get("notification_interval_hours") or 0
+    if interval <= 0:
+        return True
+    last_notified = profile.get("last_notified_at")
+    if not last_notified:
+        return True
+    last_dt = datetime.fromisoformat(last_notified.replace("Z", "+00:00"))
+    return datetime.now(timezone.utc) >= last_dt + timedelta(hours=interval)
+
+
+def get_listings_since_last_notification(supabase: Client, profile: dict) -> list[dict]:
+    """For interval-based profiles, fetch all new listings since the last notification."""
+    interval = profile.get("notification_interval_hours") or 0
+    profile_id = profile.get("id")
+    last_notified = profile.get("last_notified_at")
+
+    if last_notified:
+        since = last_notified
+    else:
+        since = (datetime.now(timezone.utc) - timedelta(hours=max(interval, 24))).isoformat()
+
+    result = (
+        supabase.table("properties")
+        .select("*")
+        .eq("search_profile_id", profile_id)
+        .gte("first_seen_at", since)
+        .execute()
+    )
+    return result.data or []
+
+
+def update_last_notified(supabase: Client, profile_id: str) -> None:
+    supabase.table("search_profiles").update(
+        {"last_notified_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", profile_id).execute()
+
+
+def send_email_notification(
+    new_listings: list[dict],
+    profiles: list[dict] | None = None,
+    transit_lookup: dict[str, str] | None = None,
+) -> None:
     api_key = os.environ.get("RESEND_API_KEY")
     notify_email = os.environ.get("NOTIFY_EMAIL", "")
     to_emails = [e.strip() for e in notify_email.split(",") if e.strip()]
@@ -66,13 +166,38 @@ def send_email_notification(new_listings: list[dict], profiles: list[dict] | Non
     for p in new_listings:
         beds = f"{p['bedrooms']}bed · " if p.get("bedrooms") else ""
         price = f"£{p['price']:,}/mo"
+        agent = p.get("agent_name") or p["source"]
+
+        furnished = p.get("furnished_status") or "unknown"
+        furnished_label = {
+            "furnished": "✔ Furnished",
+            "part-furnished": "✔ Part-furnished",
+            "unfurnished": "✘ Unfurnished",
+            "unknown": "? Furnished status unverified",
+        }.get(furnished, furnished)
+
+        parking = p.get("parking_status") or "unverified"
+        parking_label = "★ Parking (Bonus)" if parking == "bonus" else "– Parking: Unverified"
+
+        growth = " · <em>Growth Mode</em>" if p.get("is_growth_mode") else ""
+
+        # Look up transit time by address area name if available
+        transit = ""
+        if transit_lookup:
+            for area_name, duration in transit_lookup.items():
+                if area_name.lower() in (p.get("address") or "").lower():
+                    transit = f"<br><span style='font-size:12px;color:#6b7280;'>🚇 Royal Free: {duration}</span>"
+                    break
+
         rows += f"""
         <tr>
           <td style="padding:12px 0;border-bottom:1px solid #e5e0da;">
             <a href="{p['listing_url']}" style="font-size:15px;font-weight:600;color:#1a1715;text-decoration:none;">
               {p['address']}
             </a><br>
-            <span style="font-size:13px;color:#5a534e;">{beds}{price} · {p.get('agent_name') or p['source']}</span>
+            <span style="font-size:13px;color:#5a534e;">{beds}{price} · {agent}{growth}</span><br>
+            <span style="font-size:12px;color:#6b7280;">{furnished_label} &nbsp;·&nbsp; {parking_label}</span>
+            {transit}
           </td>
         </tr>"""
 
@@ -124,6 +249,66 @@ def send_email_notification(new_listings: list[dict], profiles: list[dict] | Non
             print(f"  Email to {email} failed: {resp.status_code} {resp.text}")
 
 
+def scrape_areas(
+    areas: list[dict],
+    profile_id: str | None,
+    min_price: int,
+    max_price: int,
+    min_bedrooms: int | None,
+    max_bedrooms: int | None,
+    furnished_only: bool,
+    is_growth_mode: bool = False,
+) -> list[dict]:
+    """Scrape Rightmove + OnTheMarket for a list of areas and return enriched listings."""
+    listings: list[dict] = []
+
+    for area in areas:
+        area_name = area["name"]
+        rightmove_code = area["rightmove_code"]
+        otm_slug = area["otm_slug"]
+        label = f"{area_name}{'  [Growth Mode]' if is_growth_mode else ''}"
+
+        print(f"  Area: {label}")
+
+        print(f"    Fetching from Rightmove ({area_name})...")
+        try:
+            raw = rightmove.scrape(
+                location_code=rightmove_code,
+                min_price=min_price,
+                max_price=max_price,
+                min_bedrooms=min_bedrooms,
+                max_bedrooms=max_bedrooms,
+                furnished_only=furnished_only,
+            )
+            for item in raw:
+                item["search_profile_id"] = profile_id
+                item["is_growth_mode"] = is_growth_mode
+                enrich_listing(item)
+            listings.extend(raw)
+        except Exception as e:
+            print(f"    Rightmove failed for {area_name}: {e}")
+
+        print(f"    Fetching from OnTheMarket ({area_name})...")
+        try:
+            raw = onthemarket.scrape(
+                location_slug=otm_slug,
+                min_price=min_price,
+                max_price=max_price,
+                min_bedrooms=min_bedrooms,
+                max_bedrooms=max_bedrooms,
+                furnished_only=furnished_only,
+            )
+            for item in raw:
+                item["search_profile_id"] = profile_id
+                item["is_growth_mode"] = is_growth_mode
+                enrich_listing(item)
+            listings.extend(raw)
+        except Exception as e:
+            print(f"    OnTheMarket failed for {area_name}: {e}")
+
+    return listings
+
+
 if __name__ == "__main__":
     print(f"[{datetime.now(timezone.utc).isoformat()}] Starting scrape...")
 
@@ -149,61 +334,99 @@ if __name__ == "__main__":
 
     print(f"Found {len(profiles)} active profile(s).")
 
-    all_listings: list[dict] = []
+    all_new_listings: list[dict] = []
 
     for profile in profiles:
         profile_id = profile["id"]
         profile_name = profile["name"]
-        areas = profile.get("areas", [])
+        areas = profile.get("areas") or []
         min_price = profile["min_price"]
         max_price = profile["max_price"]
+        min_bedrooms = profile.get("min_bedrooms")
+        max_bedrooms = profile.get("max_bedrooms")
+        furnished_only = bool(profile.get("furnished_only", False))
+        growth_mode_areas = profile.get("growth_mode_areas") or []
+        growth_mode_threshold = profile.get("growth_mode_threshold") or 3
 
         if not areas:
             print(f"  Profile '{profile_name}' has no areas — skipping.")
             continue
 
-        print(f"\nProfile: {profile_name} (£{min_price:,}–£{max_price:,}/mo)")
+        bed_label = f"{min_bedrooms}–{max_bedrooms}bed · " if min_bedrooms or max_bedrooms else ""
+        fur_label = "furnished · " if furnished_only else ""
+        print(f"\nProfile: {profile_name} ({bed_label}{fur_label}£{min_price:,}–£{max_price:,}/mo)")
 
-        for area in areas:
-            area_name = area["name"]
-            rightmove_code = area["rightmove_code"]
-            otm_slug = area["otm_slug"]
+        # ── Scrape primary zones ──────────────────────────────────────────────
+        primary_listings = scrape_areas(
+            areas=areas,
+            profile_id=profile_id,
+            min_price=min_price,
+            max_price=max_price,
+            min_bedrooms=min_bedrooms,
+            max_bedrooms=max_bedrooms,
+            furnished_only=furnished_only,
+            is_growth_mode=False,
+        )
 
-            print(f"  Area: {area_name}")
+        print(f"\n  Upserting {len(primary_listings)} primary listings...")
+        new_primary = upsert_properties(supabase_client, primary_listings)
+        print(f"  {len(new_primary)} new in primary zones.")
 
-            print(f"    Fetching from Rightmove ({area_name})...")
-            try:
-                listings = rightmove.scrape(
-                    location_code=rightmove_code,
-                    min_price=min_price,
-                    max_price=max_price,
-                )
-                for listing in listings:
-                    listing["search_profile_id"] = profile_id
-                all_listings.extend(listings)
-            except Exception as e:
-                print(f"    Rightmove failed for {area_name}: {e}")
+        growth_listings: list[dict] = []
 
-            print(f"    Fetching from OnTheMarket ({area_name})...")
-            try:
-                listings = onthemarket.scrape(
-                    location_slug=otm_slug,
-                    min_price=min_price,
-                    max_price=max_price,
-                )
-                for listing in listings:
-                    listing["search_profile_id"] = profile_id
-                all_listings.extend(listings)
-            except Exception as e:
-                print(f"    OnTheMarket failed for {area_name}: {e}")
+        # ── Growth Mode — activate if primary new stock is thin ───────────────
+        if growth_mode_areas and len(new_primary) < growth_mode_threshold:
+            print(f"  → Growth Mode activated ({len(new_primary)} new < threshold {growth_mode_threshold})")
+            print(f"    Scraping up to {min(3, len(growth_mode_areas))} adjacent areas...")
+            growth_listings = scrape_areas(
+                areas=growth_mode_areas[:3],
+                profile_id=profile_id,
+                min_price=min_price,
+                max_price=max_price,
+                min_bedrooms=min_bedrooms,
+                max_bedrooms=max_bedrooms,
+                furnished_only=furnished_only,
+                is_growth_mode=True,
+            )
+            print(f"  Upserting {len(growth_listings)} growth-mode listings...")
+            new_growth = upsert_properties(supabase_client, growth_listings)
+            print(f"  {len(new_growth)} new in growth-mode zones.")
+            all_new_listings.extend(new_growth)
 
-    print(f"\nUpserting {len(all_listings)} listings into Supabase...")
-    new_listings = upsert_properties(supabase_client, all_listings)
+        all_new_listings.extend(new_primary)
 
-    print(f"\nFound {len(all_listings)} total, {len(new_listings)} new listings")
-    if new_listings:
-        print("New listings:")
-        for p in new_listings:
-            print(f"  {p['listing_url']}")
-        print("Sending email notification...")
-        send_email_notification(new_listings, profiles)
+        # ── Notification (immediate or interval-based digest) ─────────────────
+        if not should_send_notification(profile):
+            interval = profile.get("notification_interval_hours") or 0
+            print(f"  Notification throttled — next digest in < {interval}h.")
+            continue
+
+        # For interval profiles, collect all listings since last notification
+        interval = profile.get("notification_interval_hours") or 0
+        if interval > 0:
+            notify_listings = get_listings_since_last_notification(supabase_client, profile)
+            digest_label = f"(48h digest: {len(notify_listings)} listing(s))"
+        else:
+            notify_listings = new_primary + [p for p in growth_listings if p.get("is_growth_mode")]
+            digest_label = f"({len(notify_listings)} new listing(s))"
+
+        if not notify_listings:
+            print(f"  No listings to notify for '{profile_name}'.")
+            continue
+
+        print(f"  Sending notification for '{profile_name}' {digest_label}...")
+        send_email_notification(
+            notify_listings,
+            profiles=[profile],
+            transit_lookup=TRANSIT_TO_ROYAL_FREE,
+        )
+
+        if profile_id and interval > 0:
+            update_last_notified(supabase_client, profile_id)
+
+    total_new = len(all_new_listings)
+    print(f"\nDone. {total_new} new listing(s) found across all profiles.")
+    if total_new:
+        for p in all_new_listings:
+            growth_tag = " [growth]" if p.get("is_growth_mode") else ""
+            print(f"  {p['listing_url']}{growth_tag}")
