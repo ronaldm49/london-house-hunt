@@ -375,6 +375,24 @@ if __name__ == "__main__":
 
     supabase_client = build_supabase_client()
 
+    # ── API connectivity check ────────────────────────────────────────────────
+    print("\n  Checking external API connectivity...")
+    try:
+        r = httpx.get("https://api.postcodes.io/postcodes/NW32QG", timeout=10)
+        print(f"  postcodes.io: {r.status_code} {'OK' if r.status_code == 200 else 'FAIL'}")
+    except Exception as e:
+        print(f"  postcodes.io: ERROR — {e}")
+    try:
+        r = httpx.get("https://api.tfl.gov.uk/StopPoint", params={"lat": 51.55, "lon": -0.18, "stopTypes": "NaptanMetroStation", "radius": 500, "modes": "tube"}, timeout=10)
+        print(f"  TfL StopPoint: {r.status_code} {'OK' if r.status_code == 200 else 'FAIL'}")
+    except Exception as e:
+        print(f"  TfL StopPoint: ERROR — {e}")
+    try:
+        r = httpx.get("https://api.tfl.gov.uk/journey/journeyresults/51.55,-0.18/to/51.5534,-0.1630", params={"time": "0730", "timeIs": "Departing"}, timeout=10)
+        print(f"  TfL Journey Planner: {r.status_code} {'OK' if r.status_code == 200 else 'FAIL — ' + r.text[:100]}")
+    except Exception as e:
+        print(f"  TfL Journey Planner: ERROR — {e}")
+
     refresh_commute_times(supabase_client)
 
     DEFAULT_PROFILE = {
