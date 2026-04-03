@@ -257,6 +257,46 @@ def send_email_notification(
             print(f"  Email to {email} failed: {resp.status_code} {resp.text}")
 
 
+def refresh_commute_times(supabase: Client) -> None:
+    """
+    Re-run TfL Journey Planner for every active property in the DB and update
+    the royal_free_commute_minutes field.  Runs once per scraper invocation so
+    times stay accurate as TfL timetables change.
+    """
+    from tube_lookup import extract_postcode, geocode_postcode, find_nearest_tube, journey_time_to_royal_free
+
+    result = supabase.table("properties").select("id, address, source_id, source").eq("is_active", True).execute()
+    rows = result.data or []
+    if not rows:
+        return
+
+    print(f"\n  Refreshing commute times for {len(rows)} active properties...")
+    updated = 0
+    for row in rows:
+        address = row.get("address", "")
+        pc = extract_postcode(address)
+        if not pc:
+            continue
+        postcode, is_full = pc
+        coords = geocode_postcode(postcode, is_full=is_full)
+        if not coords:
+            continue
+        lat, lon = coords
+        commute = journey_time_to_royal_free(lat, lon)
+        if commute is None:
+            continue
+        tube_result = find_nearest_tube(lat, lon)
+        update_payload: dict = {"royal_free_commute_minutes": commute}
+        if tube_result:
+            station, walk_min = tube_result
+            update_payload["nearest_tube_station"] = station
+            update_payload["tube_walk_minutes"] = walk_min
+        supabase.table("properties").update(update_payload).eq("id", row["id"]).execute()
+        updated += 1
+
+    print(f"  Commute times refreshed for {updated} properties.")
+
+
 def scrape_areas(
     areas: list[dict],
     profile_id: str | None,
@@ -328,6 +368,8 @@ if __name__ == "__main__":
     print(f"[{datetime.now(timezone.utc).isoformat()}] Starting scrape...")
 
     supabase_client = build_supabase_client()
+
+    refresh_commute_times(supabase_client)
 
     DEFAULT_PROFILE = {
         "id": None,
