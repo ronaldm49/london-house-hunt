@@ -38,15 +38,14 @@ export const LONDON_AREAS: AreaConfig[] = [
   { name: "Kennington", rightmove_code: "REGION^70435", otm_slug: "kennington" },
   { name: "Kentish Town", rightmove_code: "REGION^85230", otm_slug: "kentish-town" },
   // ── North London / Royal Free Corridor ──────────────────────────────────────
-  // Rightmove uses OUTCODE^ identifiers for postcode districts (NW*, N*).
-  // ⚠️  Confirm each OUTCODE ID against a live Rightmove search URL before use.
-  { name: "Alexandra Park", rightmove_code: "OUTCODE^1260", otm_slug: "alexandra-park" },
-  { name: "Bounds Green",   rightmove_code: "OUTCODE^1261", otm_slug: "bounds-green" },
-  { name: "Colindale",      rightmove_code: "OUTCODE^1295", otm_slug: "colindale" },
-  { name: "Finchley Central", rightmove_code: "OUTCODE^1253", otm_slug: "finchley-central" },
-  { name: "Golders Green",  rightmove_code: "OUTCODE^1298", otm_slug: "golders-green" },
-  { name: "Hendon Central", rightmove_code: "OUTCODE^1293", otm_slug: "hendon" },
-  { name: "Wood Green",     rightmove_code: "OUTCODE^1272", otm_slug: "wood-green" },
+  // REGION^ codes verified against rightmove.co.uk/house-prices/{area}.html
+  // Alexandra Park (N10/N22) has no dedicated Rightmove region — uses Muswell Hill.
+  { name: "Bounds Green",     rightmove_code: "REGION^70371", otm_slug: "bounds-green" },
+  { name: "Colindale",        rightmove_code: "REGION^70344", otm_slug: "colindale" },
+  { name: "Finchley Central", rightmove_code: "REGION^85196", otm_slug: "finchley-central" },
+  { name: "Golders Green",    rightmove_code: "REGION^70353", otm_slug: "golders-green" },
+  { name: "Hendon Central",   rightmove_code: "REGION^87511", otm_slug: "hendon" },
+  { name: "Wood Green",       rightmove_code: "REGION^70366", otm_slug: "wood-green" },
   // ─────────────────────────────────────────────────────────────────────────────
   { name: "Muswell Hill", rightmove_code: "REGION^85376", otm_slug: "muswell-hill" },
   { name: "New Cross", rightmove_code: "REGION^85384", otm_slug: "new-cross" },

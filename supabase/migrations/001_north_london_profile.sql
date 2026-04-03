@@ -68,11 +68,11 @@ INSERT INTO search_profiles (
 
   -- Primary zones (all within 0.5 mi of a Tube station)
   '[
-    {"name": "Colindale",      "rightmove_code": "OUTCODE^1295", "otm_slug": "colindale"},
-    {"name": "Golders Green",  "rightmove_code": "OUTCODE^1298", "otm_slug": "golders-green"},
-    {"name": "Hendon Central", "rightmove_code": "OUTCODE^1293", "otm_slug": "hendon"},
-    {"name": "Bounds Green",   "rightmove_code": "OUTCODE^1261", "otm_slug": "bounds-green"},
-    {"name": "Alexandra Park", "rightmove_code": "OUTCODE^1260", "otm_slug": "alexandra-park"}
+    {"name": "Colindale",      "rightmove_code": "REGION^70344", "otm_slug": "colindale"},
+    {"name": "Golders Green",  "rightmove_code": "REGION^70353", "otm_slug": "golders-green"},
+    {"name": "Hendon Central", "rightmove_code": "REGION^87511", "otm_slug": "hendon"},
+    {"name": "Bounds Green",   "rightmove_code": "REGION^70371", "otm_slug": "bounds-green"},
+    {"name": "Muswell Hill",   "rightmove_code": "REGION^85376", "otm_slug": "muswell-hill"}
   ]'::jsonb,
 
   0,     -- no lower price bound
@@ -85,8 +85,8 @@ INSERT INTO search_profiles (
 
   -- Adjacent fallback areas (Growth Mode, max 3 returned)
   '[
-    {"name": "Finchley Central", "rightmove_code": "OUTCODE^1253", "otm_slug": "finchley-central"},
-    {"name": "Wood Green",       "rightmove_code": "OUTCODE^1272", "otm_slug": "wood-green"}
+    {"name": "Finchley Central", "rightmove_code": "REGION^85196", "otm_slug": "finchley-central"},
+    {"name": "Wood Green",       "rightmove_code": "REGION^70366", "otm_slug": "wood-green"}
   ]'::jsonb,
 
   3,  -- activate Growth Mode when < 3 new primary listings found
