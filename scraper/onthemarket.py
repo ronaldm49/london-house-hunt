@@ -134,7 +134,7 @@ def scrape(
     search_params = {
         "min-price": str(min_price),
         "max-price": str(max_price),
-        "recently-added": "24-hours",
+        "recently-added": "7-days",
     }
     if min_bedrooms is not None:
         search_params["beds-min"] = str(min_bedrooms)
