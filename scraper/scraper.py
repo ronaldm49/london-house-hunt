@@ -22,7 +22,7 @@ from supabase import create_client, Client
 
 import rightmove
 import onthemarket
-from tube_lookup import enrich_with_tube_info
+from tube_lookup import enrich_with_tube_info, extract_postcode, geocode_postcode, find_nearest_tube, journey_time_to_royal_free
 
 load_dotenv()
 
@@ -263,38 +263,44 @@ def refresh_commute_times(supabase: Client) -> None:
     the royal_free_commute_minutes field.  Runs once per scraper invocation so
     times stay accurate as TfL timetables change.
     """
-    from tube_lookup import extract_postcode, geocode_postcode, find_nearest_tube, journey_time_to_royal_free
+    try:
+        result = supabase.table("properties").select("id, address").execute()
+        rows = result.data or []
+        if not rows:
+            print("  No properties found to refresh.")
+            return
 
-    result = supabase.table("properties").select("id, address, source_id, source").eq("is_active", True).execute()
-    rows = result.data or []
-    if not rows:
-        return
+        print(f"\n  Refreshing commute times for {len(rows)} properties...")
+        updated = 0
+        for row in rows:
+            address = row.get("address", "")
+            pc = extract_postcode(address)
+            if not pc:
+                print(f"    No postcode found for: {address}")
+                continue
+            postcode, is_full = pc
+            coords = geocode_postcode(postcode, is_full=is_full)
+            if not coords:
+                print(f"    Could not geocode: {postcode}")
+                continue
+            lat, lon = coords
+            commute = journey_time_to_royal_free(lat, lon)
+            if commute is None:
+                print(f"    TfL Journey Planner returned no result for: {address}")
+                continue
+            tube_result = find_nearest_tube(lat, lon)
+            update_payload = {"royal_free_commute_minutes": commute}
+            if tube_result:
+                station, walk_min = tube_result
+                update_payload["nearest_tube_station"] = station
+                update_payload["tube_walk_minutes"] = walk_min
+            supabase.table("properties").update(update_payload).eq("id", row["id"]).execute()
+            print(f"    ✓ {address} → {commute} min to Royal Free")
+            updated += 1
 
-    print(f"\n  Refreshing commute times for {len(rows)} active properties...")
-    updated = 0
-    for row in rows:
-        address = row.get("address", "")
-        pc = extract_postcode(address)
-        if not pc:
-            continue
-        postcode, is_full = pc
-        coords = geocode_postcode(postcode, is_full=is_full)
-        if not coords:
-            continue
-        lat, lon = coords
-        commute = journey_time_to_royal_free(lat, lon)
-        if commute is None:
-            continue
-        tube_result = find_nearest_tube(lat, lon)
-        update_payload: dict = {"royal_free_commute_minutes": commute}
-        if tube_result:
-            station, walk_min = tube_result
-            update_payload["nearest_tube_station"] = station
-            update_payload["tube_walk_minutes"] = walk_min
-        supabase.table("properties").update(update_payload).eq("id", row["id"]).execute()
-        updated += 1
-
-    print(f"  Commute times refreshed for {updated} properties.")
+        print(f"  Commute times refreshed for {updated}/{len(rows)} properties.")
+    except Exception as e:
+        print(f"  ERROR in refresh_commute_times: {e}")
 
 
 def scrape_areas(
