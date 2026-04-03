@@ -10,16 +10,13 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
-  const oneDayAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
-
   const [newRes, wishlistRes, calledRes, offeredRes, binRes, lastScrapedRes, allAddressesRes, profilesRes] = await Promise.all([
     supabase
       .from("properties")
       .select("*")
       .eq("is_active", true)
       .is("category", null)
-      .gte("first_seen_at", oneDayAgo)
-      .order("last_seen_at", { ascending: false, nullsFirst: false }),
+      .order("first_seen_at", { ascending: false, nullsFirst: false }),
     supabase
       .from("properties")
       .select("*")

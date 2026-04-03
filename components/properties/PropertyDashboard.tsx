@@ -296,6 +296,7 @@ export default function PropertyDashboard({
         onNotesChange={updateNotes}
         emptyMessage={emptyMessages[activeTab].msg}
         emptySubtext={emptyMessages[activeTab].sub}
+        groupByDate={activeTab === "new" && !search.trim()}
       />
     </div>
     </>
