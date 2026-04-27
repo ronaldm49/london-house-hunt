@@ -29,6 +29,7 @@ _BASE_SEARCH_PARAMS = {
     "channel": "RENT",
     "currencyCode": "GBP",
     "sortType": "6",
+    "maxDaysSinceAdded": "1",
 }
 
 # Rightmove only accepts a fixed set of radius values (miles).

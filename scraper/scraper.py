@@ -205,22 +205,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"    Rightmove failed for {area_name}: {e}")
 
-            print(f"    Fetching from OnTheMarket ({area_name}, +{SEARCH_RADIUS_MILES}mi)...")
-            try:
-                listings = onthemarket.scrape(
-                    location_slug=otm_slug,
-                    min_price=min_price,
-                    max_price=max_price,
-                    radius_miles=SEARCH_RADIUS_MILES,
-                    min_bedrooms=min_bedrooms,
-                    max_bedrooms=max_bedrooms,
-                    furnished_only=furnished_only,
-                )
-                for listing in listings:
-                    listing["search_profile_id"] = profile_id
-                all_listings.extend(listings)
-            except Exception as e:
-                print(f"    OnTheMarket failed for {area_name}: {e}")
+            # OnTheMarket scraping disabled — Rightmove only
 
     print(f"\nUpserting {len(all_listings)} listings into Supabase...")
     new_listings = upsert_properties(supabase_client, all_listings)
