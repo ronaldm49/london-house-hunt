@@ -27,7 +27,17 @@ _BASE_SEARCH_PARAMS = {
     "channel": "RENT",
     "currencyCode": "GBP",
     "sortType": "6",
+    "maxDaysSinceAdded": "1",
 }
+
+# Rightmove only accepts a fixed set of radius values (miles).
+# See https://www.rightmove.co.uk — the "Search radius" dropdown.
+_VALID_RIGHTMOVE_RADII = (0.0, 0.25, 0.5, 1.0, 3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 40.0)
+
+
+def _snap_radius(radius: float) -> float:
+    """Snap an arbitrary radius (miles) to the nearest value Rightmove accepts."""
+    return min(_VALID_RIGHTMOVE_RADII, key=lambda v: abs(v - radius))
 
 MAX_PAGES = 42
 PAGE_SIZE = 24
@@ -122,23 +132,16 @@ def scrape(
     location_code: str = "REGION^93965",
     min_price: int = 2000,
     max_price: int = 2700,
-    min_bedrooms: int | None = None,
-    max_bedrooms: int | None = None,
-    furnished_only: bool = False,
+    radius_miles: float = 0.5,
 ) -> list[dict]:
+    snapped_radius = _snap_radius(radius_miles)
     search_params = {
         **_BASE_SEARCH_PARAMS,
         "locationIdentifier": location_code,
         "minPrice": str(min_price),
         "maxPrice": str(max_price),
+        "radius": str(snapped_radius),
     }
-    if min_bedrooms is not None:
-        search_params["minBedrooms"] = str(min_bedrooms)
-    if max_bedrooms is not None:
-        search_params["maxBedrooms"] = str(max_bedrooms)
-    if furnished_only:
-        # httpx serialises a list as repeated params: furnishTypes=furnished&furnishTypes=partFurnished
-        search_params["furnishTypes"] = ["furnished", "partFurnished"]
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []

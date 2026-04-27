@@ -56,11 +56,11 @@ def _fetch_page(client: httpx.Client, page: int, search_url: str, search_params:
         results = redux.get("results", {})
 
         results_list = results.get("list", [])
-        total_raw = results.get("totalResults") or "0"
-        if isinstance(total_raw, str):
-            total = int(total_raw.replace(",", "")) if total_raw.strip() else 0
+        total_str = results.get("totalResults", "0")
+        if isinstance(total_str, str):
+            total = int(total_str.replace(",", ""))
         else:
-            total = int(total_raw) if total_raw is not None else 0
+            total = int(total_str)
         break
 
     return results_list, total
@@ -126,24 +126,17 @@ def scrape(
     location_slug: str = "islington",
     min_price: int = 2000,
     max_price: int = 2700,
-    min_bedrooms: int | None = None,
-    max_bedrooms: int | None = None,
-    furnished_only: bool = False,
+    radius_miles: float = 0.5,
 ) -> list[dict]:
     search_url = BASE_URL + f"/to-rent/property/{location_slug}/"
     search_params = {
         "min-price": str(min_price),
         "max-price": str(max_price),
+        "recently-added": "24-hours",
+        # Expand the corridor around the named area so we don't only see
+        # listings strictly inside the slug's polygon.
+        "radius": f"{radius_miles:g}",
     }
-    if min_bedrooms is not None:
-        search_params["beds-min"] = str(min_bedrooms)
-    if max_bedrooms is not None:
-        search_params["beds-max"] = str(max_bedrooms)
-    if furnished_only:
-        # OTM accepts furnished-state=furnished or part-furnished; we request both via two passes
-        # but the API only supports a single value per request — use "furnished" as primary filter
-        # and rely on the post-scrape furnished_status column to capture part-furnished listings too.
-        search_params["furnished-state"] = "furnished"
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []

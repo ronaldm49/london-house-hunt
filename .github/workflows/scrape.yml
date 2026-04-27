@@ -3,11 +3,11 @@ name: Scrape Properties
 on:
   schedule:
     # BST (UTC+1) — current season (March–October)
-    - cron: '0 6 * * *'   # 7am BST
+    - cron: '0 7 * * *'   # 8am BST
     - cron: '0 10 * * *'  # 11am BST
-    - cron: '0 14 * * *'  # 3pm BST
-    - cron: '0 18 * * *'  # 7pm BST
-    - cron: '0 22 * * *'  # 11pm BST
+    - cron: '0 13 * * *'  # 2pm BST
+    - cron: '0 17 * * *'  # 6pm BST
+    - cron: '0 21 * * *'  # 10pm BST
   workflow_dispatch: {}    # manual trigger
 
 jobs:
