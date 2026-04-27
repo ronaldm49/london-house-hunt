@@ -19,7 +19,7 @@ load_dotenv()
 # Expand the search corridor by this many miles around each configured area,
 # so we don't only see listings strictly inside one Rightmove/OTM polygon.
 # Rightmove snaps this to its nearest allowed value (0, 0.25, 0.5, 1, 3, 5, …).
-SEARCH_RADIUS_MILES = float(os.environ.get("SEARCH_RADIUS_MILES", "0.5"))
+SEARCH_RADIUS_MILES = float(os.environ.get("SEARCH_RADIUS_MILES", "0.25"))
 
 
 def build_supabase_client() -> Client:

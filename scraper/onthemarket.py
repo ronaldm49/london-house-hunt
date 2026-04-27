@@ -142,7 +142,7 @@ def scrape(
     location_slug: str = "islington",
     min_price: int = 2000,
     max_price: int = 2700,
-    radius_miles: float = 0.5,
+    radius_miles: float = 0.25,
     min_bedrooms: int | None = None,
     max_bedrooms: int | None = None,
     furnished_only: bool = False,

@@ -29,7 +29,6 @@ _BASE_SEARCH_PARAMS = {
     "channel": "RENT",
     "currencyCode": "GBP",
     "sortType": "6",
-    "maxDaysSinceAdded": "1",
 }
 
 # Rightmove only accepts a fixed set of radius values (miles).
@@ -173,7 +172,7 @@ def scrape(
     location_code: str = "REGION^93965",
     min_price: int = 2000,
     max_price: int = 2700,
-    radius_miles: float = 0.5,
+    radius_miles: float = 0.25,
     min_bedrooms: int | None = None,
     max_bedrooms: int | None = None,
     furnished_only: bool = False,
