@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+import parking as parking_detector
+
 BASE_URL = "https://www.onthemarket.com"
 
 HEADERS = {
@@ -103,6 +105,19 @@ def _parse_property(prop: dict, now: str) -> dict:
     if is_reduced:
         listing_update_date = now
 
+    features = prop.get("features") or []
+    description = ", ".join(features) if features else None
+
+    parking_status = parking_detector.detect(
+        structured_values=[prop.get("parking")],
+        text_fields=[
+            description,
+            prop.get("summary"),
+            prop.get("description"),
+            " \n ".join(str(f) for f in features),
+        ],
+    )
+
     return {
         "source": "onthemarket",
         "source_id": str(prop.get("id", "")),
@@ -111,13 +126,14 @@ def _parse_property(prop: dict, now: str) -> dict:
         "bedrooms": prop.get("bedrooms"),
         "bathrooms": prop.get("bathrooms"),
         "property_type": prop.get("humanised-property-type") or "",
-        "description": ", ".join(prop.get("features", [])) if prop.get("features") else None,
+        "description": description,
         "image_url": first_image,
         "listing_url": listing_url,
         "agent_name": agent_name,
         "first_visible_date": first_visible_date,
         "listing_update_date": listing_update_date,
         "listing_update_reason": listing_update_reason,
+        "parking_status": parking_status,
         "last_seen_at": now,
     }
 

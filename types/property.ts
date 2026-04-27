@@ -42,7 +42,10 @@ export interface Property {
   nearest_tube_station: string | null;
   tube_walk_minutes: number | null;
   royal_free_commute_minutes: number | null;
+  parking_status: ParkingStatus | null;
 }
+
+export type ParkingStatus = 'yes' | 'no' | 'unknown';
 
 export interface PropertyFilters {
   min_price?: number;

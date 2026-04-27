@@ -69,6 +69,59 @@ const IconBed = () => (
   </svg>
 );
 
+const IconCar = () => (
+  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 17h8m-9 0a2 2 0 11-4 0 2 2 0 014 0zm14 0a2 2 0 11-4 0 2 2 0 014 0zM3 13l2-6a2 2 0 012-1.5h10a2 2 0 012 1.5l2 6v4H3v-4z" />
+  </svg>
+);
+
+const IconCarOff = () => (
+  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M8 17h6m-7 0a2 2 0 11-4 0 2 2 0 014 0zm14 0a2 2 0 11-4 0 2 2 0 014 0zM5 13l2-6a2 2 0 012-1.5h6m4 1.6L21 13v4h-3" />
+  </svg>
+);
+
+const IconCarQuestion = () => (
+  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 17h8m-9 0a2 2 0 11-4 0 2 2 0 014 0zm14 0a2 2 0 11-4 0 2 2 0 014 0zM3 13l2-6a2 2 0 012-1.5h10a2 2 0 012 1.5l2 6v4H3v-4zM12 9.5a1 1 0 111.5.87c-.4.23-.5.43-.5.88V12m0 1.5v.01" />
+  </svg>
+);
+
+function ParkingBadge({ status }: { status: 'yes' | 'no' | 'unknown' | null | undefined }) {
+  if (!status) return null;
+  if (status === "yes") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-accent-green/15 text-accent-green border border-accent-green/30"
+        title="Parking mentioned in listing"
+      >
+        <IconCar />
+        Parking
+      </span>
+    );
+  }
+  if (status === "no") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-accent-red/15 text-accent-red border border-accent-red/30"
+        title="Listing says no parking"
+      >
+        <IconCarOff />
+        No parking
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded bg-bg-secondary text-text-muted border border-border"
+      title="Parking not mentioned — ask agent"
+    >
+      <IconCarQuestion />
+      Parking?
+    </span>
+  );
+}
+
 export default function PropertyCard({
   property,
   index,
@@ -219,6 +272,7 @@ export default function PropertyCard({
             {property.property_type && (
               <span className="text-text-muted capitalize">{property.property_type}</span>
             )}
+            <ParkingBadge status={property.parking_status} />
           </div>
           <a
             href={property.listing_url}

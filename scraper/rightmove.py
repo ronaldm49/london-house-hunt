@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+import parking as parking_detector
+
 BASE_URL = "https://www.rightmove.co.uk"
 SEARCH_URL = BASE_URL + "/property-to-rent/find.html"
 
@@ -108,6 +110,8 @@ def _parse_property(prop: dict, now: str) -> dict:
     listing_update_reason = listing_update.get("listingUpdateReason")
 
     price = _get_monthly_price(prop.get("price", {}))
+    summary = prop.get("summary")
+    parking_status = _extract_parking_status(prop, summary)
 
     return {
         "source": "rightmove",
@@ -117,15 +121,52 @@ def _parse_property(prop: dict, now: str) -> dict:
         "bedrooms": prop.get("bedrooms") or 0,
         "bathrooms": prop.get("bathrooms"),
         "property_type": prop.get("propertySubType") or "",
-        "description": prop.get("summary"),
+        "description": summary,
         "image_url": first_image,
         "listing_url": listing_url,
         "agent_name": prop.get("customer", {}).get("branchDisplayName"),
         "first_visible_date": first_visible,
         "listing_update_date": listing_update_date,
         "listing_update_reason": listing_update_reason,
+        "parking_status": parking_status,
         "last_seen_at": now,
     }
+
+
+def _extract_parking_status(prop: dict, summary: str | None) -> str:
+    """
+    Rightmove search results sometimes include a structured `parking` field on
+    the listing card, but very often it's set to a placeholder like
+    "Ask agent". When that happens we fall back to scanning the summary copy
+    and any keyFeatures the agent did fill in.
+    """
+    structured: list[str | None] = []
+
+    parking_field = prop.get("parking")
+    if isinstance(parking_field, dict):
+        structured.extend(
+            [parking_field.get("type"), parking_field.get("displayValue"),
+             parking_field.get("value")]
+        )
+    elif isinstance(parking_field, list):
+        structured.extend(str(v) for v in parking_field)
+    elif parking_field is not None:
+        structured.append(str(parking_field))
+
+    display_property = prop.get("displayProperty") or {}
+    if isinstance(display_property, dict):
+        structured.append(display_property.get("parking"))
+
+    text_fields: list[str | None] = [summary]
+
+    key_features = prop.get("keyFeatures")
+    if isinstance(key_features, list):
+        text_fields.append(" \n ".join(str(f) for f in key_features))
+
+    return parking_detector.detect(
+        structured_values=structured,
+        text_fields=text_fields,
+    )
 
 
 def scrape(

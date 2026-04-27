@@ -41,7 +41,7 @@ comment on column properties.listing_update_reason is
 comment on column properties.furnished_status is
   'Detected furnished state: furnished | part-furnished | unfurnished | unknown.';
 comment on column properties.parking_status is
-  'Whether parking is mentioned in the listing: bonus | unverified.';
+  'Detected parking availability from listing copy + structured fields: yes | no | unknown.';
 comment on column properties.is_growth_mode is
   'True when this listing was discovered via growth-mode (adjacent-area) fallback.';
 
