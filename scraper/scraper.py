@@ -13,6 +13,7 @@ from supabase import create_client, Client
 
 import rightmove
 import onthemarket
+import tube_lookup
 
 load_dotenv()
 
@@ -206,6 +207,10 @@ if __name__ == "__main__":
                 print(f"    Rightmove failed for {area_name}: {e}")
 
             # OnTheMarket scraping disabled — Rightmove only
+
+    print(f"\nEnriching {len(all_listings)} listings with TfL transport data...")
+    for listing in all_listings:
+        tube_lookup.enrich_with_tube_info(listing)
 
     print(f"\nUpserting {len(all_listings)} listings into Supabase...")
     new_listings = upsert_properties(supabase_client, all_listings)

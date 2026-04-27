@@ -87,6 +87,19 @@ const IconCarQuestion = () => (
   </svg>
 );
 
+const IconTube = () => (
+  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <circle cx="12" cy="12" r="9" />
+    <path strokeLinecap="round" d="M3 12h18" />
+  </svg>
+);
+
+const IconClock = () => (
+  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
 function ParkingBadge({ status }: { status: 'yes' | 'no' | 'unknown' | null | undefined }) {
   if (!status) return null;
   if (status === "yes") {
@@ -118,6 +131,40 @@ function ParkingBadge({ status }: { status: 'yes' | 'no' | 'unknown' | null | un
     >
       <IconCarQuestion />
       Parking?
+    </span>
+  );
+}
+
+function TubeBadge({ station, walkMinutes }: { station: string | null; walkMinutes: number | null }) {
+  if (!station) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded bg-bg-secondary text-text-secondary border border-border"
+      title={`Nearest tube: ${station}${walkMinutes != null ? ` · ${walkMinutes} min walk` : ""}`}
+    >
+      <IconTube />
+      {station}
+      {walkMinutes != null && <span className="text-text-muted normal-case font-normal tracking-normal">· {walkMinutes}m</span>}
+    </span>
+  );
+}
+
+function CommuteBadge({ minutes }: { minutes: number | null }) {
+  if (minutes == null) return null;
+  const isGood = minutes <= 30;
+  const isOk = minutes <= 45;
+  const cls = isGood
+    ? "inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded bg-accent-green/15 text-accent-green border border-accent-green/30"
+    : isOk
+    ? "inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded bg-accent-gold/15 text-accent-gold border border-accent-gold/30"
+    : "inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider px-2 py-1 rounded bg-accent-red/15 text-accent-red border border-accent-red/30";
+  return (
+    <span
+      className={cls}
+      title={`Commute to Royal Free Hospital (Mon ~8am): ${minutes} min`}
+    >
+      <IconClock />
+      RF <span className="normal-case font-normal tracking-normal">· {minutes}min</span>
     </span>
   );
 }
@@ -272,8 +319,17 @@ export default function PropertyCard({
             {property.property_type && (
               <span className="text-text-muted capitalize">{property.property_type}</span>
             )}
-            <ParkingBadge status={property.parking_status} />
           </div>
+
+          {/* Parking + commute badges */}
+          {(property.parking_status || property.nearest_tube_station || property.royal_free_commute_minutes != null) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              <ParkingBadge status={property.parking_status} />
+              <TubeBadge station={property.nearest_tube_station} walkMinutes={property.tube_walk_minutes} />
+              <CommuteBadge minutes={property.royal_free_commute_minutes} />
+            </div>
+          )}
+
           <a
             href={property.listing_url}
             target="_blank"
@@ -286,30 +342,6 @@ export default function PropertyCard({
             <p className="text-text-muted text-xs mt-1 truncate font-body">
               {property.agent_name}
             </p>
-          )}
-
-          {/* Transport info */}
-          {(property.nearest_tube_station || property.royal_free_commute_minutes) && (
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-              {property.nearest_tube_station && property.tube_walk_minutes != null && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-text-secondary font-body">
-                  <svg className="w-3 h-3 shrink-0 text-text-muted" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-                  </svg>
-                  {property.nearest_tube_station}
-                  <span className="text-text-muted">· {property.tube_walk_minutes} min walk</span>
-                </span>
-              )}
-              {property.royal_free_commute_minutes != null && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-text-secondary font-body">
-                  <svg className="w-3 h-3 shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Royal Free
-                  <span className="text-text-muted">· ~{property.royal_free_commute_minutes} min</span>
-                </span>
-              )}
-            </div>
           )}
         </div>
 
