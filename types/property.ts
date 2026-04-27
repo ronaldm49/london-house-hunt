@@ -12,6 +12,9 @@ export interface SearchProfile {
   areas: AreaConfig[];
   min_price: number;
   max_price: number;
+  min_bedrooms: number | null;
+  max_bedrooms: number | null;
+  furnished_only: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;

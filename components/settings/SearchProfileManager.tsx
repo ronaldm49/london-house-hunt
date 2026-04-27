@@ -14,6 +14,9 @@ type FormState = {
   areas: AreaConfig[];
   min_price: string;
   max_price: string;
+  min_bedrooms: string;
+  max_bedrooms: string;
+  furnished_only: boolean;
 };
 
 const emptyForm = (): FormState => ({
@@ -21,6 +24,9 @@ const emptyForm = (): FormState => ({
   areas: [],
   min_price: "2000",
   max_price: "2700",
+  min_bedrooms: "",
+  max_bedrooms: "",
+  furnished_only: false,
 });
 
 function profileToForm(p: SearchProfile): FormState {
@@ -29,6 +35,9 @@ function profileToForm(p: SearchProfile): FormState {
     areas: p.areas,
     min_price: String(p.min_price),
     max_price: String(p.max_price),
+    min_bedrooms: p.min_bedrooms == null ? "" : String(p.min_bedrooms),
+    max_bedrooms: p.max_bedrooms == null ? "" : String(p.max_bedrooms),
+    furnished_only: Boolean(p.furnished_only),
   };
 }
 
@@ -90,10 +99,15 @@ export default function SearchProfileManager({ initialProfiles }: SearchProfileM
     setError("");
     const min = parseInt(form.min_price, 10);
     const max = parseInt(form.max_price, 10);
+    const minBeds = form.min_bedrooms.trim() === "" ? null : parseInt(form.min_bedrooms, 10);
+    const maxBeds = form.max_bedrooms.trim() === "" ? null : parseInt(form.max_bedrooms, 10);
 
     if (!form.name.trim()) { setError("Name is required"); return; }
     if (form.areas.length === 0) { setError("Add at least one area"); return; }
     if (isNaN(min) || isNaN(max) || min >= max) { setError("Enter a valid price range"); return; }
+    if (minBeds !== null && (isNaN(minBeds) || minBeds < 0)) { setError("Min beds must be a non-negative number"); return; }
+    if (maxBeds !== null && (isNaN(maxBeds) || maxBeds < 0)) { setError("Max beds must be a non-negative number"); return; }
+    if (minBeds !== null && maxBeds !== null && minBeds > maxBeds) { setError("Min beds can't exceed max beds"); return; }
 
     setSaving(true);
     const body = {
@@ -101,6 +115,9 @@ export default function SearchProfileManager({ initialProfiles }: SearchProfileM
       areas: form.areas,
       min_price: min,
       max_price: max,
+      min_bedrooms: minBeds,
+      max_bedrooms: maxBeds,
+      furnished_only: form.furnished_only,
     };
 
     try {
@@ -233,6 +250,15 @@ export default function SearchProfileManager({ initialProfiles }: SearchProfileM
                         ))}
                         <span className="text-text-muted text-xs font-body">
                           &ensp;·&ensp;£{profile.min_price.toLocaleString()}–£{profile.max_price.toLocaleString()}/mo
+                          {(profile.min_bedrooms != null || profile.max_bedrooms != null) && (
+                            <>
+                              &ensp;·&ensp;
+                              {profile.min_bedrooms != null && profile.min_bedrooms === profile.max_bedrooms
+                                ? `${profile.min_bedrooms} bed`
+                                : `${profile.min_bedrooms ?? "any"}–${profile.max_bedrooms ?? "any"} beds`}
+                            </>
+                          )}
+                          {profile.furnished_only && <>&ensp;·&ensp;furnished</>}
                         </span>
                       </div>
                     </div>
@@ -438,6 +464,47 @@ function ProfileForm({
             />
           </div>
         </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-body text-text-muted mb-1.5">
+          Bedrooms <span className="text-text-muted/70">(leave blank for no limit)</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="number"
+              min="0"
+              value={form.min_bedrooms}
+              onChange={(e) => setForm((f) => ({ ...f, min_bedrooms: e.target.value }))}
+              placeholder="Min"
+              className="w-full bg-bg-input border border-border rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+            />
+          </div>
+          <span className="text-text-muted text-sm font-body">—</span>
+          <div className="relative flex-1">
+            <input
+              type="number"
+              min="0"
+              value={form.max_bedrooms}
+              onChange={(e) => setForm((f) => ({ ...f, max_bedrooms: e.target.value }))}
+              placeholder="Max"
+              className="w-full bg-bg-input border border-border rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.furnished_only}
+            onChange={(e) => setForm((f) => ({ ...f, furnished_only: e.target.checked }))}
+            className="w-4 h-4 rounded border-border bg-bg-input accent-accent cursor-pointer"
+          />
+          <span className="text-sm font-body text-text-secondary">Furnished / part-furnished only</span>
+        </label>
       </div>
 
       {error && (

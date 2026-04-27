@@ -18,7 +18,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { name, areas, min_price, max_price } = body;
+  const { name, areas, min_price, max_price, min_bedrooms, max_bedrooms, furnished_only } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -30,9 +30,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid price range" }, { status: 400 });
   }
 
+  const minBeds = min_bedrooms === null || min_bedrooms === undefined ? null : Number(min_bedrooms);
+  const maxBeds = max_bedrooms === null || max_bedrooms === undefined ? null : Number(max_bedrooms);
+  if (minBeds !== null && (!Number.isInteger(minBeds) || minBeds < 0)) {
+    return NextResponse.json({ error: "min_bedrooms must be a non-negative integer" }, { status: 400 });
+  }
+  if (maxBeds !== null && (!Number.isInteger(maxBeds) || maxBeds < 0)) {
+    return NextResponse.json({ error: "max_bedrooms must be a non-negative integer" }, { status: 400 });
+  }
+  if (minBeds !== null && maxBeds !== null && minBeds > maxBeds) {
+    return NextResponse.json({ error: "min_bedrooms cannot exceed max_bedrooms" }, { status: 400 });
+  }
+
   const { data, error } = await supabaseServer
     .from("search_profiles")
-    .insert({ name: name.trim(), areas, min_price, max_price })
+    .insert({
+      name: name.trim(),
+      areas,
+      min_price,
+      max_price,
+      min_bedrooms: minBeds,
+      max_bedrooms: maxBeds,
+      furnished_only: Boolean(furnished_only),
+    })
     .select()
     .single();
 

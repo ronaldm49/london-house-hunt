@@ -6,7 +6,16 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const body = await request.json();
-  const { name, areas, min_price, max_price, is_active } = body;
+  const {
+    name,
+    areas,
+    min_price,
+    max_price,
+    is_active,
+    min_bedrooms,
+    max_bedrooms,
+    furnished_only,
+  } = body;
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -24,12 +33,44 @@ export async function PATCH(
   if (max_price !== undefined) updates.max_price = max_price;
   if (is_active !== undefined) updates.is_active = is_active;
 
+  const validateBedCount = (v: unknown, field: string) => {
+    if (v === null) return null;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0) {
+      return new Error(`${field} must be a non-negative integer`);
+    }
+    return n;
+  };
+
+  if (min_bedrooms !== undefined) {
+    const v = validateBedCount(min_bedrooms, "min_bedrooms");
+    if (v instanceof Error) return NextResponse.json({ error: v.message }, { status: 400 });
+    updates.min_bedrooms = v;
+  }
+  if (max_bedrooms !== undefined) {
+    const v = validateBedCount(max_bedrooms, "max_bedrooms");
+    if (v instanceof Error) return NextResponse.json({ error: v.message }, { status: 400 });
+    updates.max_bedrooms = v;
+  }
+  if (furnished_only !== undefined) {
+    updates.furnished_only = Boolean(furnished_only);
+  }
+
   if (
     updates.min_price !== undefined &&
     updates.max_price !== undefined &&
     (updates.min_price as number) >= (updates.max_price as number)
   ) {
     return NextResponse.json({ error: "Invalid price range" }, { status: 400 });
+  }
+  if (
+    updates.min_bedrooms !== undefined &&
+    updates.max_bedrooms !== undefined &&
+    updates.min_bedrooms !== null &&
+    updates.max_bedrooms !== null &&
+    (updates.min_bedrooms as number) > (updates.max_bedrooms as number)
+  ) {
+    return NextResponse.json({ error: "min_bedrooms cannot exceed max_bedrooms" }, { status: 400 });
   }
 
   const { data, error } = await supabaseServer
