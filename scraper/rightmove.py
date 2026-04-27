@@ -174,6 +174,9 @@ def scrape(
     min_price: int = 2000,
     max_price: int = 2700,
     radius_miles: float = 0.5,
+    min_bedrooms: int | None = None,
+    max_bedrooms: int | None = None,
+    furnished_only: bool = False,
 ) -> list[dict]:
     snapped_radius = _snap_radius(radius_miles)
     search_params = {
@@ -183,6 +186,14 @@ def scrape(
         "maxPrice": str(max_price),
         "radius": str(snapped_radius),
     }
+    if min_bedrooms is not None:
+        search_params["minBedrooms"] = str(min_bedrooms)
+    if max_bedrooms is not None:
+        search_params["maxBedrooms"] = str(max_bedrooms)
+    if furnished_only:
+        # Rightmove accepts a comma-separated list:
+        #   furnished, partFurnished, unfurnished
+        search_params["furnishTypes"] = "furnished,partFurnished"
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []
@@ -203,4 +214,23 @@ def scrape(
             all_raw.extend(raw_props)
             print(f"  Fetched page {page + 1}/{total_pages} ({len(all_raw)} so far)")
 
-    return [_parse_property(p, now) for p in all_raw]
+    parsed = [_parse_property(p, now) for p in all_raw]
+
+    # Belt-and-braces client-side filter: Rightmove occasionally returns
+    # studios/0-bed listings in the radius spillover even when minBedrooms
+    # is set. Drop anything outside the requested range.
+    def _bedroom_ok(prop: dict) -> bool:
+        beds = prop.get("bedrooms")
+        if beds is None:
+            return True  # don't drop if the source didn't tell us
+        if min_bedrooms is not None and beds < min_bedrooms:
+            return False
+        if max_bedrooms is not None and beds > max_bedrooms:
+            return False
+        return True
+
+    filtered = [p for p in parsed if _bedroom_ok(p)]
+    dropped = len(parsed) - len(filtered)
+    if dropped:
+        print(f"  Rightmove: filtered out {dropped} listing(s) outside bedroom range")
+    return filtered

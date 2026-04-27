@@ -143,6 +143,9 @@ def scrape(
     min_price: int = 2000,
     max_price: int = 2700,
     radius_miles: float = 0.5,
+    min_bedrooms: int | None = None,
+    max_bedrooms: int | None = None,
+    furnished_only: bool = False,
 ) -> list[dict]:
     search_url = BASE_URL + f"/to-rent/property/{location_slug}/"
     search_params = {
@@ -153,6 +156,13 @@ def scrape(
         # listings strictly inside the slug's polygon.
         "radius": f"{radius_miles:g}",
     }
+    if min_bedrooms is not None:
+        search_params["min-bedrooms"] = str(min_bedrooms)
+    if max_bedrooms is not None:
+        search_params["max-bedrooms"] = str(max_bedrooms)
+    if furnished_only:
+        # OTM accepts furnished-state codes: furnished, part-furnished
+        search_params["furnished-state"] = "furnished,part-furnished"
 
     now = datetime.now(timezone.utc).isoformat()
     all_raw: list[dict] = []
@@ -173,4 +183,20 @@ def scrape(
             all_raw.extend(raw_props)
             print(f"  Fetched page {page}/{total_pages} ({len(all_raw)} so far)")
 
-    return [_parse_property(p, now) for p in all_raw]
+    parsed = [_parse_property(p, now) for p in all_raw]
+
+    def _bedroom_ok(prop: dict) -> bool:
+        beds = prop.get("bedrooms")
+        if beds is None:
+            return True
+        if min_bedrooms is not None and beds < min_bedrooms:
+            return False
+        if max_bedrooms is not None and beds > max_bedrooms:
+            return False
+        return True
+
+    filtered = [p for p in parsed if _bedroom_ok(p)]
+    dropped = len(parsed) - len(filtered)
+    if dropped:
+        print(f"  OnTheMarket: filtered out {dropped} listing(s) outside bedroom range")
+    return filtered

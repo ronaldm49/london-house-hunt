@@ -162,12 +162,24 @@ if __name__ == "__main__":
         areas = profile.get("areas", [])
         min_price = profile["min_price"]
         max_price = profile["max_price"]
+        min_bedrooms = profile.get("min_bedrooms")
+        max_bedrooms = profile.get("max_bedrooms")
+        furnished_only = bool(profile.get("furnished_only", False))
 
         if not areas:
             print(f"  Profile '{profile_name}' has no areas — skipping.")
             continue
 
-        print(f"\nProfile: {profile_name} (£{min_price:,}–£{max_price:,}/mo)")
+        bed_filter = ""
+        if min_bedrooms is not None or max_bedrooms is not None:
+            if min_bedrooms == max_bedrooms and min_bedrooms is not None:
+                bed_filter = f" · {min_bedrooms} bed"
+            else:
+                lo = min_bedrooms if min_bedrooms is not None else "any"
+                hi = max_bedrooms if max_bedrooms is not None else "any"
+                bed_filter = f" · {lo}-{hi} beds"
+        furn_filter = " · furnished" if furnished_only else ""
+        print(f"\nProfile: {profile_name} (£{min_price:,}–£{max_price:,}/mo{bed_filter}{furn_filter})")
 
         for area in areas:
             area_name = area["name"]
@@ -183,6 +195,9 @@ if __name__ == "__main__":
                     min_price=min_price,
                     max_price=max_price,
                     radius_miles=SEARCH_RADIUS_MILES,
+                    min_bedrooms=min_bedrooms,
+                    max_bedrooms=max_bedrooms,
+                    furnished_only=furnished_only,
                 )
                 for listing in listings:
                     listing["search_profile_id"] = profile_id
@@ -197,6 +212,9 @@ if __name__ == "__main__":
                     min_price=min_price,
                     max_price=max_price,
                     radius_miles=SEARCH_RADIUS_MILES,
+                    min_bedrooms=min_bedrooms,
+                    max_bedrooms=max_bedrooms,
+                    furnished_only=furnished_only,
                 )
                 for listing in listings:
                     listing["search_profile_id"] = profile_id
