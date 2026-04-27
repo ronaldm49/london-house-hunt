@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Serif_Display, Outfit } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const dmSerif = DM_Serif_Display({
@@ -31,6 +32,7 @@ export default function RootLayout({
         className={`${dmSerif.variable} ${outfit.variable} font-body antialiased relative`}
       >
         {children}
+        <Analytics />
       </body>
     </html>
   );
